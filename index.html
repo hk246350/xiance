@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>相册</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .preserve-3d { transform-style: preserve-3d; }
+            .backface-hidden { backface-visibility: hidden; }
+            .perspective-1000 { perspective: 1800px; }
+        }
+    </style>
+    <style>
+        /* 核心动画 */
+        @keyframes rotate3d {
+            0% { transform: rotateY(0deg) rotateX(8deg); }
+            25% { transform: rotateY(90deg) rotateX(12deg); }
+            50% { transform: rotateY(180deg) rotateX(8deg); }
+            75% { transform: rotateY(270deg) rotateX(4deg); }
+            100% { transform: rotateY(360deg) rotateX(8deg); }
+        }
+        
+        @keyframes sakuraFall {
+            0% { transform: translateY(-50px) rotate(0deg) translateX(0px); opacity: 0; }
+            10% { opacity: 1; }
+            25% { transform: translateY(25vh) rotate(90deg) translateX(15px); }
+            50% { transform: translateY(50vh) rotate(180deg) translateX(-15px); }
+            75% { transform: translateY(75vh) rotate(270deg) translateX(10px); }
+            90% { opacity: 1; }
+            100% { transform: translateY(100vh) rotate(360deg) translateX(-10px); opacity: 0; }
+        }
+
+        /* 全局样式重置 */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { 
+            width: 100%; 
+            height: 100%; 
+            overflow-x: hidden;
+            position: relative;
+            background-color: #FFE6F0; /* 粉色背景 */
+        }
+
+        /* 强制居中容器 - 核心修复 */
+        .absolute-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%); /* 绝对居中公式 */
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px; /* 防止边缘溢出 */
+        }
+
+        /* 3D透视容器 */
+        .perspective-1000 {
+            width: 100%;
+            height: 100%;
+            max-width: 800px;
+            max-height: 600px;
+        }
+
+        /* 相册容器 - 严格围绕中心旋转 */
+        #album-container {
+            animation: rotate3d 25s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+            transition: transform 0.8s cubic-bezier(0.25, 0.8, 0.25, 1);
+            transform-origin: center center; /* 旋转中心固定 */
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        /* 照片样式与响应式调整 */
+        .photo {
+            position: absolute;
+            width: 220px;
+            height: 300px;
+            transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+            filter: drop-shadow(0 10px 20px rgba(0,0,0,0.2));
+            border: 4px solid white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .photo-front, .photo-back {
+            position: absolute;
+            inset: 0;
+            backface-visibility: hidden;
+        }
+        
+        .photo-front img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.6s ease;
+        }
+        
+        .photo-back {
+            transform: rotateY(180deg);
+            background: linear-gradient(135deg, #FFC2E2 0%, #FF99CC 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .photo-back::after {
+            content: '\f03e';
+            font-family: 'FontAwesome';
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 45px;
+        }
+        
+        .photo:hover {
+            transform: scale(1.12) translateZ(450px) !important;
+            box-shadow: 0 0 20px rgba(255, 105, 180, 0.5), 0 0 40px rgba(255, 105, 180, 0.3);
+            z-index: 30;
+        }
+        
+        .photo:hover .photo-front img { transform: scale(1.05); }
+
+        /* 背景装饰 */
+        #sakura-bg {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background-image: 
+                radial-gradient(rgba(255, 105, 180, 0.1) 1px, transparent 1px),
+                radial-gradient(rgba(255, 105, 180, 0.05) 1px, transparent 1px);
+            background-size: 50px 50px;
+            background-position: 0 0, 25px 25px;
+        }
+        
+        .sakura {
+            position: absolute;
+            border-radius: 50% 50% 45% 55% / 40% 50% 50% 60%;
+            background: radial-gradient(circle, #ffedf7 0%, #ffc2e0 70%, #ff99cc 100%);
+            box-shadow: 0 0 10px rgba(255, 230, 240, 0.7);
+            animation: sakuraFall linear infinite;
+            opacity: 0;
+        }
+
+        /* 控制按钮样式 */
+        .control-btn, .bottom-control-btn, #upload-btn {
+            background: white;
+            color: #FF69B4;
+            border: 1px solid rgba(255, 105, 180, 0.2);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border-radius: 50%;
+        }
+        
+        .control-btn:hover, .bottom-control-btn:hover, #upload-btn:hover {
+            background: #fff;
+            transform: scale(1.15);
+            box-shadow: 0 6px 16px rgba(255, 105, 180, 0.2);
+        }
+        
+        .control-btn {
+            position: fixed;
+            width: 44px;
+            height: 44px;
+            z-index: 999;
+        }
+        
+        .bottom-controls {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        
+        .bottom-control-btn { width: 48px; height: 48px; }
+        #upload-btn { width: 54px; height: 54px; margin: 0 auto; }
+
+        /* 页脚布局 */
+        footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 10;
+            padding: 10px 4px 16px;
+        }
+
+        /* 移动端适配 */
+        @media (max-width: 768px) {
+            .photo { width: 160px !important; height: 220px !important; }
+            .control-btn { width: 40px; height: 40px; }
+            .bottom-control-btn { width: 44px; height: 44px; }
+            #upload-btn { width: 50px; height: 50px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- 粉色背景装饰 -->
+    <div id="sakura-bg"></div>
+
+    <!-- 背景音乐 -->
+    <audio id="bg-music" loop preload="auto">
+        <source src="bgm.mp3" type="audio/mpeg">
+    </audio>
+
+    <!-- 音乐控制按钮 -->
+    <button id="music-btn" class="control-btn top-20 left-1/2 transform -translate-x-1/2">
+        <i class="fa fa-music"></i>
+    </button>
+
+    <!-- 强制居中容器 - 核心修复 -->
+    <div class="absolute-center">
+        <div class="perspective-1000">
+            <div id="album-container" class="preserve-3d">
+                <!-- 相册卡片1 -->
+                <div class="photo backface-hidden" style="transform: rotateY(0deg) translateZ(400px);">
+                    <div class="photo-front"><img src="1.jpg" alt="照片1" onerror="this.src='https://picsum.photos/440/600?random=1'"></div>
+                    <div class="photo-back"></div>
+                </div>
+                <!-- 相册卡片2 -->
+                <div class="photo backface-hidden" style="transform: rotateY(40deg) translateZ(400px);">
+                    <div class="photo-front"><img src="2.jpg" alt="照片2" onerror="this.src='https://picsum.photos/440/600?random=2'"></div>
+                    <div class="photo-back"></div>
+                </div>
+                <!-- 相册卡片3 -->
+                <div class="photo backface-hidden" style="transform: rotateY(80deg) translateZ(400px);">
+                    <div class="photo-front"><img src="3.jpg" alt="照片3" onerror="this.src='https://picsum.photos/440/600?random=3'"></div>
+                    <div class="photo-back"></div>
+                </div>
+                <!-- 相册卡片4 -->
+                <div class="photo backface-hidden" style="transform: rotateY(120deg) translateZ(400px);">
+                    <div class="photo-front"><img src="4.jpg" alt="照片4" onerror="this.src='https://picsum.photos/440/600?random=4'"></div>
+                    <div class="photo-back"></div>
+                </div>
+                <!-- 相册卡片5 -->
+                <div class="photo backface-hidden" style="transform: rotateY(160deg) translateZ(400px);">
+                    <div class="photo-front"><img src="5.jpg" alt="照片5" onerror="this.src='https://picsum.photos/440/600?random=5'"></div>
+                    <div class="photo-back"></div>
+                </div>
+                <!-- 相册卡片6 -->
+                <div class="photo backface-hidden" style="transform: rotateY(200deg) translateZ(400px);">
+                    <div class="photo-front"><img src="6.jpg" alt="照片6" onerror="this.src='https://picsum.photos/440/600?random=6'"></div>
+                    <div class="photo-back"></div>
+                </div>
+                <!-- 相册卡片7 -->
+                <div class="photo backface-hidden" style="transform: rotateY(240deg) translateZ(400px);">
+                    <div class="photo-front"><img src="7.jpg" alt="照片7" onerror="this.src='https://picsum.photos/440/600?random=7'"></div>
+                    <div class="photo-back"></div>
+                </div>
+                <!-- 相册卡片8 -->
+                <div class="photo backface-hidden" style="transform: rotateY(280deg) translateZ(400px);">
+                    <div class="photo-front"><img src="8.jpg" alt="照片8" onerror="this.src='https://picsum.photos/440/600?random=8'"></div>
+                    <div class="photo-back"></div>
+                </div>
+                <!-- 相册卡片9 -->
+                <div class="photo backface-hidden" style="transform: rotateY(320deg) translateZ(400px);">
+                    <div class="photo-front"><img src="9.jpg" alt="照片9" onerror="this.src='https://picsum.photos/440/600?random=9'"></div>
+                    <div class="photo-back"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部控制栏 -->
+    <footer>
+        <div class="bottom-controls">
+            <button id="pause-btn" class="bottom-control-btn"><i class="fa fa-pause"></i></button>
+            <button id="prev-btn" class="bottom-control-btn"><i class="fa fa-chevron-left"></i></button>
+            <button id="next-btn" class="bottom-control-btn"><i class="fa fa-chevron-right"></i></button>
+        </div>
+        <div class="mt-10">
+            <button id="upload-btn"><i class="fa fa-upload text-xl"></i></button>
+            <input type="file" id="photo-upload" accept="image/*" multiple class="hidden">
+        </div>
+    </footer>
+
+    <script>
+        // 樱花背景生成
+        function createSakura() {
+            const container = document.getElementById('sakura-bg');
+            const count = window.innerWidth < 768 ? 100 : 180;
+            
+            for (let i = 0; i < count; i++) {
+                const sakura = document.createElement('div');
+                sakura.className = 'sakura';
+                const size = Math.random() * (window.innerWidth < 768 ? 8 : 12) + 3;
+                sakura.style.width = `${size}px`;
+                sakura.style.height = `${size * 0.8}px`;
+                sakura.style.left = `${Math.random() * 100}vw`;
+                sakura.style.top = `-${Math.random() * 80 + 20}px`;
+                sakura.style.animationDuration = `${Math.random() * 30 + 15}s`;
+                sakura.style.animationDelay = `${Math.random() * 15}s`;
+                container.appendChild(sakura);
+            }
+        }
+
+        // 相册控制逻辑
+        let isRotating = true;
+        let currentAngle = 0;
+        const album = document.getElementById('album-container');
+        const pauseBtn = document.getElementById('pause-btn');
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const photos = document.querySelectorAll('.photo');
+        const anglePerPhoto = 360 / photos.length;
+        let rotateSpeed = 0.01;
+
+        // 暂停/播放控制
+        pauseBtn.addEventListener('click', () => {
+            isRotating = !isRotating;
+            album.style.animation = isRotating 
+                ? `rotate3d ${20 / (rotateSpeed * 200)}s cubic-bezier(0.25, 0.1, 0.25, 1) infinite`
+                : 'none';
+            pauseBtn.innerHTML = isRotating ? '<i class="fa fa-pause"></i>' : '<i class="fa fa-play"></i>';
+        });
+
+        // 上一张/下一张
+        prevBtn.addEventListener('click', () => {
+            currentAngle += anglePerPhoto;
+            updateRotation();
+        });
+        nextBtn.addEventListener('click', () => {
+            currentAngle -= anglePerPhoto;
+            updateRotation();
+        });
+
+        // 更新旋转角度（确保围绕中心）
+        function updateRotation() {
+            album.style.animation = 'none';
+            album.style.transform = `rotateY(${currentAngle}deg) rotateX(10deg)`;
+            isRotating = false;
+            pauseBtn.innerHTML = '<i class="fa fa-play"></i>';
+        }
+
+        // 照片翻面
+        photos.forEach(photo => {
+            let flipped = false;
+            photo.addEventListener('click', () => {
+                const transform = photo.style.transform;
+                photo.style.transform = flipped
+                    ? transform.replace(/rotateY\((-?\d+)deg\)/, (_, d) => `rotateY(${parseInt(d)-180}deg)`)
+                    : transform.replace(/rotateY\((-?\d+)deg\)/, (_, d) => `rotateY(${parseInt(d)+180}deg)`);
+                flipped = !flipped;
+                if (isRotating) pauseBtn.click();
+            });
+        });
+
+        // 鼠标拖动控制
+        let dragging = false;
+        let startX, startAngle;
+        album.parentElement.addEventListener('mousedown', e => {
+            dragging = true;
+            startX = e.clientX;
+            startAngle = currentAngle;
+            album.style.animation = 'none';
+            isRotating = false;
+            pauseBtn.innerHTML = '<i class="fa fa-play"></i>';
+        });
+
+        document.addEventListener('mousemove', e => {
+            if (!dragging) return;
+            currentAngle = startAngle + (e.clientX - startX) * 0.5;
+            album.style.transform = `rotateY(${currentAngle}deg) rotateX(10deg)`;
+        });
+
+        document.addEventListener('mouseup', () => dragging = false);
+
+        // 滚轮控制速度
+        document.addEventListener('wheel', e => {
+            rotateSpeed = Math.max(0.001, Math.min(0.01, rotateSpeed + (e.deltaY > 0 ? -0.001 : 0.001)));
+            if (isRotating) {
+                album.style.animation = `rotate3d ${20 / (rotateSpeed * 200)}s cubic-bezier(0.25, 0.1, 0.25, 1) infinite`;
+            }
+        });
+
+        // 照片上传
+        const uploadBtn = document.getElementById('upload-btn');
+        const photoUpload = document.getElementById('photo-upload');
+        uploadBtn.addEventListener('click', () => photoUpload.click());
+        photoUpload.addEventListener('change', e => {
+            const files = e.target.files;
+            if (!files.length) return;
+            
+            uploadBtn.innerHTML = '<i class="fa fa-spinner fa-spin text-xl"></i>';
+            setTimeout(() => {
+                [...files].forEach((file, i) => {
+                    if (i >= photos.length) return;
+                    const reader = new FileReader();
+                    reader.onload = e => photos[i].querySelector('img').src = e.target.result;
+                    reader.readAsDataURL(file);
+                });
+                uploadBtn.innerHTML = '<i class="fa fa-upload text-xl"></i>';
+            }, 500);
+        });
+
+        // 背景音乐控制
+        const bgMusic = document.getElementById('bg-music');
+        const musicBtn = document.getElementById('music-btn');
+        musicBtn.addEventListener('click', () => {
+            if (bgMusic.paused) {
+                bgMusic.play().catch(() => {});
+                musicBtn.innerHTML = '<i class="fa fa-pause"></i>';
+            } else {
+                bgMusic.pause();
+                musicBtn.innerHTML = '<i class="fa fa-music"></i>';
+            }
+        });
+
+        // 移动端触摸支持
+        let touchStartX;
+        album.parentElement.addEventListener('touchstart', e => {
+            touchStartX = e.touches[0].clientX;
+            startAngle = currentAngle;
+            dragging = true;
+            album.style.animation = 'none';
+            isRotating = false;
+            pauseBtn.innerHTML = '<i class="fa fa-play"></i>';
+        });
+
+        document.addEventListener('touchmove', e => {
+            if (!dragging) return;
+            currentAngle = startAngle + (e.touches[0].clientX - touchStartX) * 0.5;
+            album.style.transform = `rotateY(${currentAngle}deg) rotateX(10deg)`;
+        });
+
+        document.addEventListener('touchend', () => dragging = false);
+
+        // 窗口大小变化时重新校准中心
+        function recalibrateCenter() {
+            const centerContainer = document.querySelector('.absolute-center');
+            if (centerContainer) {
+                // 重新计算屏幕中心
+                const windowCenterX = window.innerWidth / 2;
+                const windowCenterY = window.innerHeight / 2;
+                centerContainer.style.transform = `translate(-${windowCenterX}px, -${windowCenterY}px)`;
+                centerContainer.style.left = `${windowCenterX}px`;
+                centerContainer.style.top = `${windowCenterY}px`;
+            }
+        }
+
+        // 初始化
+        window.addEventListener('DOMContentLoaded', () => {
+            createSakura();
+            recalibrateCenter(); // 初始校准
+        });
+
+        window.addEventListener('resize', recalibrateCenter); // 窗口变化时校准
+    </script>
+</body>
+</html>
